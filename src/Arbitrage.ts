@@ -1,10 +1,9 @@
 import * as _ from "lodash";
-import { BigNumber, Contract, FixedNumber, Wallet } from "ethers";
+import { BigNumber, Contract, Wallet } from "ethers";
 import { FlashbotsBundleProvider } from "@flashbots/ethers-provider-bundle";
 import { WETH_ADDRESS } from "./addresses";
 import { EthMarket } from "./EthMarket";
 import { ETHER, bigNumberToDecimal } from "./utils";
-import { count } from "console";
 
 export interface CrossedMarketDetails {
 	profit: BigNumber;
@@ -43,8 +42,6 @@ export function getBestCrossedMarket(
 	tokenAddress: string
 ): CrossedMarketDetails | undefined {
 	let bestCrossedMarket: CrossedMarketDetails | undefined = undefined;
-	let testBestCrossedMarket: CrossedMarketDetails | undefined = undefined;
-
 	// crossed markets is gonna have a length of one or 0
 	if (crossedMarkets.length !== 0) {
 		for (const crossedMarket of crossedMarkets) {
@@ -75,6 +72,8 @@ export function getBestCrossedMarket(
 
 			const profitLogs: ProfitLog[] = [];
 
+			let counter = 0;
+
 			const binarySearchProfit = (
 				lowerBound: BigNumber,
 				upperBound: BigNumber
@@ -91,39 +90,26 @@ export function getBestCrossedMarket(
 					return Number(b.profit.sub(a.profit));
 				});
 
-				const greatestProfitLog = profitLogs[0];
+				// get the three highest profit values and their corresponding volumes
+				const highestLogs = profitLogs.slice(0, 3);
 
-				if (greatestProfitLog.profit.gt(0)) {
-					return greatestProfitLog;
+				// sort the logs by volume where the highest volume is at the beginning
+				highestLogs.sort((a, b) => {
+					return Number(b.volume.sub(a.volume));
+				});
+
+				counter++;
+
+				if (counter < 6) {
+					return binarySearchProfit(highestLogs[0].volume, highestLogs[2].volume);
 				} else {
-					return { profit: BigNumber.from(0), volume: BigNumber.from(0) };
+					return profitLogs[0];
 				}
 			};
 
 			const bestProfitLog = binarySearchProfit(BOUNDS[0], BOUNDS[1]);
 
-			if (bestProfitLog?.profit.gt(0) && testBestCrossedMarket === undefined) {
-				testBestCrossedMarket = {
-					profit: bestProfitLog.profit,
-					volume: bestProfitLog.volume,
-					tokenAddress,
-					buyFromMarket,
-					sellToMarket,
-				};
-			} else if (
-				testBestCrossedMarket !== undefined &&
-				bestProfitLog?.profit.gt(testBestCrossedMarket.profit)
-			) {
-				bestCrossedMarket = {
-					profit: bestProfitLog?.profit,
-					volume: bestProfitLog.volume,
-					tokenAddress,
-					buyFromMarket,
-					sellToMarket,
-				};
-			}
-
-			if (bestProfitLog?.profit.gt(0) && bestCrossedMarket === undefined) {
+			if (bestProfitLog?.profit.gt(0)) {
 				bestCrossedMarket = {
 					profit: bestProfitLog.profit,
 					volume: bestProfitLog.volume,
@@ -131,83 +117,6 @@ export function getBestCrossedMarket(
 					buyFromMarket,
 					sellToMarket,
 				};
-			} else if (
-				bestCrossedMarket !== undefined &&
-				bestProfitLog?.profit.gt(bestCrossedMarket.profit)
-			) {
-				bestCrossedMarket = {
-					profit: bestProfitLog?.profit,
-					volume: bestProfitLog.volume,
-					tokenAddress,
-					buyFromMarket,
-					sellToMarket,
-				};
-			}
-
-			for (const size of TEST_VOLUMES) {
-				// returns the amountOut from the buying size
-				const tokensOutFromBuyingSize = buyFromMarket.getTokensOut(
-					WETH_ADDRESS,
-					tokenAddress,
-					size
-				);
-				// use the amountsOut from the buyingSize as the amountIn on the selling market to get the amount of WETH that will be received
-				const proceedsFromSellingTokens = sellToMarket.getTokensOut(
-					tokenAddress,
-					WETH_ADDRESS,
-					tokensOutFromBuyingSize
-				);
-
-				const profit = proceedsFromSellingTokens.sub(size);
-
-				if (
-					bestCrossedMarket !== undefined &&
-					profit.lt(bestCrossedMarket.profit)
-				) {
-					// If the next size up lost value, meet halfway. TODO: replace with real binary search
-
-					const trySize = size.add(bestCrossedMarket.volume).div(2);
-					const tryTokensOutFromBuyingSize = buyFromMarket.getTokensOut(
-						WETH_ADDRESS,
-						tokenAddress,
-						trySize
-					);
-					const tryProceedsFromSellingTokens = sellToMarket.getTokensOut(
-						tokenAddress,
-						WETH_ADDRESS,
-						tryTokensOutFromBuyingSize
-					);
-					const tryProfit = tryProceedsFromSellingTokens.sub(trySize);
-
-					if (tryProfit.gt(bestCrossedMarket.profit)) {
-						bestCrossedMarket = {
-							volume: trySize,
-							profit: tryProfit,
-							tokenAddress,
-							sellToMarket,
-							buyFromMarket,
-						};
-					}
-
-					break;
-				}
-				bestCrossedMarket = {
-					volume: size,
-					profit: profit,
-					tokenAddress,
-					sellToMarket,
-					buyFromMarket,
-				};
-			}
-		}
-
-		if (bestCrossedMarket !== undefined && testBestCrossedMarket !== undefined) {
-			if (bestCrossedMarket.profit.gt(testBestCrossedMarket.profit)) {
-				console.log(
-					`bestCrossedMarket is greater than test crossed market by ${bestCrossedMarket.profit.sub(
-						testBestCrossedMarket.profit
-					)}`
-				);
 			}
 		}
 		return bestCrossedMarket;
@@ -299,10 +208,6 @@ export class Arbitrage {
 				bestCrossedMarket !== undefined &&
 				bestCrossedMarket.profit.gt(ETHER.div(1000))
 			) {
-				console.log(
-					"bestCrossedMarket profit is greater than",
-					ETHER.div(1000).toString()
-				);
 				bestCrossedMarkets.push(bestCrossedMarket);
 			}
 		}
