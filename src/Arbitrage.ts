@@ -43,6 +43,7 @@ export function getBestCrossedMarket(
 	tokenAddress: string
 ): CrossedMarketDetails | undefined {
 	let bestCrossedMarket: CrossedMarketDetails | undefined = undefined;
+	let testedBestCrossedMarket: CrossedMarketDetails | undefined = undefined;
 
 	// crossed markets is gonna have a length of one or 0
 	if (crossedMarkets.length !== 0) {
@@ -72,91 +73,35 @@ export function getBestCrossedMarket(
 				return profit;
 			};
 
-			const profitLogs: ProfitLog[] = [
-				{
-					profit: BigNumber.from(0),
-					volume: BigNumber.from(0),
-				},
-			];
+			const profitLogs: ProfitLog[] = [];
 
 			const binarySearchProfit = (
 				lowerBound: BigNumber,
 				upperBound: BigNumber
 			): BinarySearchResults => {
-				const midPoint = lowerBound.add(upperBound).div(2);
-				const profit = getProfitFromVolume(midPoint);
-
-				const length = profitLogs.length;
-				const previousProfit = profitLogs[length].profit;
-				const previousVolume = profitLogs[length].volume;
-
-				const slope = profit.sub(previousProfit).div(midPoint.sub(previousVolume));
-				// if the slope is negative
-
-				profitLogs.push({
-					profit,
-					volume: midPoint,
+				const difference = upperBound.sub(lowerBound);
+				const increments = difference.div(10);
+				for (let i = 0; i < 10; i++) {
+					const volume = lowerBound.add(increments.mul(i));
+					const profit = getProfitFromVolume(volume);
+					profitLogs.push({ profit, volume });
+				}
+				// sort the profitLogs by profit where the highest profit is at the beginning
+				profitLogs.sort((a, b) => {
+					return Number(b.profit.sub(a.profit));
 				});
 
-				if (!slope.isNegative()) {
-					if (Number(slope.abs()) <= 0.1 || length > 20) {
-						return { profit, volume: midPoint };
-					} else {
-						return binarySearchProfit(midPoint, upperBound);
-					}
+				const greatestProfitLog = profitLogs[0];
+
+				if (greatestProfitLog.profit.gt(0)) {
+					return greatestProfitLog;
 				} else {
-					return binarySearchProfit(lowerBound, midPoint);
+					return { profit: BigNumber.from(0), volume: BigNumber.from(0) };
 				}
 			};
 
-			const searchProfit = (
-				lowerBound: BigNumber,
-				upperBound: BigNumber
-			): BinarySearchResults => {
-				const midPoint = lowerBound.add(upperBound).div(2);
+			const bestProfitLog = binarySearchProfit(BOUNDS[0], BOUNDS[1]);
 
-				// you will want to search for the best profit and volume in both half's of the binary search
-
-				// if the mid point is greater than the lower bound and the mid point is greater than the upper bound
-				binarySearchProfit(midPoint, upperBound);
-
-				// sort the profitLog so that the greatest profit is the 0 index
-				profitLogs.sort((a, b) => {
-					return Number(b.profit) - Number(a.profit);
-				});
-
-				const greatestUpperProfitLog = profitLogs[0];
-
-				profitLogs.length = 0;
-
-				profitLogs.push({
-					profit: BigNumber.from(0),
-					volume: BigNumber.from(0),
-				});
-
-				binarySearchProfit(lowerBound, midPoint);
-
-				profitLogs.sort((a, b) => {
-					return Number(b.profit) - Number(a.profit);
-				});
-
-				const greatestLowerProfitLog = profitLogs[0];
-
-				profitLogs.length = 0;
-
-				profitLogs.push({
-					profit: BigNumber.from(0),
-					volume: BigNumber.from(0),
-				});
-
-				if (greatestLowerProfitLog.profit.gt(greatestUpperProfitLog.profit)) {
-					return greatestLowerProfitLog;
-				} else {
-					return greatestUpperProfitLog;
-				}
-			};
-
-			const bestProfitLog = searchProfit(BOUNDS[0], BOUNDS[1]);
 			if (bestProfitLog?.profit.gt(0) && bestCrossedMarket === undefined) {
 				bestCrossedMarket = {
 					profit: bestProfitLog.profit,
