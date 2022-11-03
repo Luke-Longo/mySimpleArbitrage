@@ -4,6 +4,8 @@ import { FlashbotsBundleProvider } from "@flashbots/ethers-provider-bundle";
 import { WETH_ADDRESS } from "./addresses";
 import { EthMarket } from "./EthMarket";
 import { ETHER, bigNumberToDecimal } from "./utils";
+import { ethers } from "ethers";
+import { BUNDLE_EXECUTOR_ABI } from "./abi";
 
 export interface CrossedMarketDetails {
 	profit: BigNumber;
@@ -281,6 +283,8 @@ export class Arbitrage {
 		return bestCrossedMarkets;
 	}
 
+	// amount of ETH before the transaction 0.976572232417622417
+
 	// TODO: take more than 1
 	async takeCrossedMarkets(
 		bestCrossedMarkets: CrossedMarketDetails[],
@@ -338,12 +342,52 @@ export class Arbitrage {
 						gasLimit: BigNumber.from(1000000),
 					}
 				);
+
+			const testTransaction =
+				await this.bundleExecutorContract.populateTransaction.uniswapWeth(
+					bestCrossedMarket.volume,
+					minerReward,
+					targets,
+					payloads,
+					{
+						maxFeePerGas: "14014900875",
+						gasLimit: BigNumber.from(1000000),
+					}
+				);
+
+			// send the signed transaction to forked mainnet on localhost
+			const testProvider = new ethers.providers.JsonRpcProvider(
+				"http://127.0.0.1:8545/"
+			);
+
+			const wallet = new ethers.Wallet(
+				"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+				testProvider
+			);
+
+			const testContract = new ethers.Contract(
+				"0xc0Bb1650A8eA5dDF81998f17B5319afD656f4c11", // bundleExecutorContract address
+				BUNDLE_EXECUTOR_ABI,
+				testProvider
+			);
+			try {
+				const testGas = await testContract.provider.estimateGas({
+					...testTransaction,
+					from: wallet.address,
+				});
+
+				console.log("testGas", testGas.toString());
+			} catch (e) {
+				console.log("error running test transaction", e);
+			}
+
 			// simulating a transaction if it fails to estimate gas then it will throw an error
 			try {
 				const estimateGas = await this.bundleExecutorContract.provider.estimateGas({
 					...transaction,
 					from: this.executorWallet.address,
 				});
+
 				if (estimateGas.gt(1400000)) {
 					console.log(
 						"EstimateGas succeeded, but suspiciously large: " + estimateGas.toString()
@@ -361,6 +405,8 @@ export class Arbitrage {
 			// create a flashbots bundle array, could add multiple transactions to the bundle array, all the transactions in a bundle need to be executed in the order they are presented in the array.
 			// you could snipe a signed transaction from the mempool and add it to the bundle array
 			// ie you could input the oracle update signed transaction into the bundle array and then liquidate a loan as you are the very next
+
+			console.log("Creating bundledTransactions");
 			const bundledTransactions = [
 				{
 					signer: this.executorWallet,
