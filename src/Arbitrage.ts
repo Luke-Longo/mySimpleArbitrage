@@ -291,7 +291,6 @@ export class Arbitrage {
 		blockNumber: number,
 		minerRewardPercentage: number
 	): Promise<void> {
-		let nonce: number;
 		for (const bestCrossedMarket of bestCrossedMarkets) {
 			console.log(
 				"Send this much WETH",
@@ -333,22 +332,6 @@ export class Arbitrage {
 				.mul(minerRewardPercentage)
 				.div(100);
 
-			// send the signed transaction to forked mainnet on localhost
-			const testProvider = new ethers.providers.JsonRpcProvider(
-				"http://127.0.0.1:8545/"
-			);
-
-			const wallet = new ethers.Wallet(
-				"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-				testProvider
-			);
-
-			const testContract = new ethers.Contract(
-				"0xc0Bb1650A8eA5dDF81998f17B5319afD656f4c11", // bundleExecutorContract address
-				BUNDLE_EXECUTOR_ABI,
-				testProvider
-			);
-
 			// construct the transaction
 			const transaction =
 				await this.bundleExecutorContract.populateTransaction.uniswapWeth(
@@ -361,46 +344,6 @@ export class Arbitrage {
 						gasLimit: BigNumber.from(1000000),
 					}
 				);
-
-			try {
-				nonce = await wallet.getTransactionCount();
-
-				console.log(`wallet nonce: ${nonce} \n`);
-
-				let tx = await wallet.sendTransaction({
-					to: "0xc0Bb1650A8eA5dDF81998f17B5319afD656f4c11",
-					value: ethers.utils.parseEther("10"),
-					gasLimit: 1000000,
-					gasPrice: 100000000000,
-					nonce,
-				});
-
-				let txReceipt = await tx.wait(1);
-
-				nonce = await wallet.getTransactionCount();
-
-				const testTransaction = await testContract.populateTransaction.uniswapWeth(
-					bestCrossedMarket.volume,
-					minerReward,
-					targets,
-					payloads,
-					{
-						gasPrice: BigNumber.from(100000000000),
-						gasLimit: BigNumber.from(1000000),
-						nonce,
-					}
-				);
-
-				const signedTransaction = await wallet.signTransaction(testTransaction);
-
-				tx = await testProvider.sendTransaction(signedTransaction);
-
-				txReceipt = await tx.wait(1);
-
-				console.log("Transaction receipt", txReceipt);
-			} catch (e) {
-				console.log(e);
-			}
 
 			// simulating a transaction if it fails to estimate gas then it will throw an error
 			try {

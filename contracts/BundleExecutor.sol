@@ -75,8 +75,10 @@ contract FlashBotsMultiCall {
     ) external payable onlyExecutor {
         require(_targets.length == _payloads.length);
         uint256 _wethBalanceBefore = WETH.balanceOf(address(this));
+        // weth amount to first market is the amount we send to the first market, this is optimistic in nature and would need to be adjusted for v3
         // optimistically transfer WETH to the first market
         // uni v2 does not take any eth directly from you, instead you can send eth to it and you will ask for the other token instead
+
         WETH.transfer(_targets[0], _wethAmountToFirstMarket);
         for (uint256 i = 0; i < _targets.length; i++) {
             (bool _success, bytes memory _response) = _targets[i].call(
