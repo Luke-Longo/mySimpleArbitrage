@@ -291,6 +291,7 @@ export class Arbitrage {
 		blockNumber: number,
 		minerRewardPercentage: number
 	): Promise<void> {
+		let nonce = 377;
 		for (const bestCrossedMarket of bestCrossedMarkets) {
 			console.log(
 				"Send this much WETH",
@@ -325,36 +326,12 @@ export class Arbitrage {
 			];
 
 			const payloads: Array<string> = [...buyCalls.data, sellCallData];
+
 			console.log({ targets, payloads });
+
 			const minerReward = bestCrossedMarket.profit
 				.mul(minerRewardPercentage)
 				.div(100);
-
-			// construct the transaction
-			const transaction =
-				await this.bundleExecutorContract.populateTransaction.uniswapWeth(
-					bestCrossedMarket.volume,
-					minerReward,
-					targets,
-					payloads,
-					{
-						gasPrice: BigNumber.from(0),
-						gasLimit: BigNumber.from(1000000),
-					}
-				);
-
-			const testTransaction =
-				await this.bundleExecutorContract.populateTransaction.uniswapWeth(
-					bestCrossedMarket.volume,
-					minerReward,
-					targets,
-					payloads,
-					{
-						gasPrice: BigNumber.from(100000000000),
-						gasLimit: BigNumber.from(1000000),
-						nonce: 347,
-					}
-				);
 
 			// send the signed transaction to forked mainnet on localhost
 			const testProvider = new ethers.providers.JsonRpcProvider(
@@ -371,31 +348,64 @@ export class Arbitrage {
 				BUNDLE_EXECUTOR_ABI,
 				testProvider
 			);
-			try {
-				const signedTransaction = await wallet.signTransaction(testTransaction);
 
-				const signedTransaction2 = await wallet.signTransaction(transaction);
+			// construct the transaction
+			const transaction =
+				await this.bundleExecutorContract.populateTransaction.uniswapWeth(
+					bestCrossedMarket.volume,
+					minerReward,
+					targets,
+					payloads,
+					{
+						gasPrice: BigNumber.from(0),
+						gasLimit: BigNumber.from(1000000),
+					}
+				);
+
+			try {
+				await wallet.sendTransaction({
+					to: "0xc0Bb1650A8eA5dDF81998f17B5319afD656f4c11",
+					value: ethers.utils.parseEther("10"),
+					gasLimit: 1000000,
+					gasPrice: 100000000000,
+					nonce,
+				});
+
+				nonce++;
+
+				const testTransaction =
+					await this.bundleExecutorContract.populateTransaction.uniswapWeth(
+						bestCrossedMarket.volume,
+						minerReward,
+						targets,
+						payloads,
+						{
+							gasPrice: BigNumber.from(100000000000),
+							gasLimit: BigNumber.from(1000000),
+							nonce,
+						}
+					);
+
+				const signedTransaction = await wallet.signTransaction(testTransaction);
 
 				const tx = await testProvider.sendTransaction(signedTransaction);
 
-				const tx2 = await testProvider.sendTransaction(signedTransaction2);
+				nonce++;
 
 				console.log(tx);
 
-				console.log(tx2);
+				const receipt = await tx.wait(1);
+
+				console.log("Transaction receipt", receipt);
+
+				// const testGas = await testContract.provider.estimateGas({
+				// 	...testTransaction,
+				// 	from: wallet.address,
+				// });
+
+				// console.log("testGas", testGas.toString());
 			} catch (e) {
 				console.log(e);
-			}
-
-			try {
-				const testGas = await testContract.provider.estimateGas({
-					...testTransaction,
-					from: wallet.address,
-				});
-
-				console.log("testGas", testGas.toString());
-			} catch (e) {
-				console.log("error running test transaction", e);
 			}
 
 			// simulating a transaction if it fails to estimate gas then it will throw an error
