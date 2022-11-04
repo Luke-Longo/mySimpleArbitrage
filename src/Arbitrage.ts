@@ -291,7 +291,7 @@ export class Arbitrage {
 		blockNumber: number,
 		minerRewardPercentage: number
 	): Promise<void> {
-		let nonce = 377;
+		let nonce: number;
 		for (const bestCrossedMarket of bestCrossedMarkets) {
 			console.log(
 				"Send this much WETH",
@@ -363,7 +363,11 @@ export class Arbitrage {
 				);
 
 			try {
-				await wallet.sendTransaction({
+				nonce = await wallet.getTransactionCount();
+
+				console.log(`wallet nonce: ${nonce} \n`);
+
+				let tx = await wallet.sendTransaction({
 					to: "0xc0Bb1650A8eA5dDF81998f17B5319afD656f4c11",
 					value: ethers.utils.parseEther("10"),
 					gasLimit: 1000000,
@@ -371,39 +375,29 @@ export class Arbitrage {
 					nonce,
 				});
 
-				nonce++;
+				let txReceipt = await tx.wait(1);
 
-				const testTransaction =
-					await this.bundleExecutorContract.populateTransaction.uniswapWeth(
-						bestCrossedMarket.volume,
-						minerReward,
-						targets,
-						payloads,
-						{
-							gasPrice: BigNumber.from(100000000000),
-							gasLimit: BigNumber.from(1000000),
-							nonce,
-						}
-					);
+				nonce = await wallet.getTransactionCount();
+
+				const testTransaction = await testContract.populateTransaction.uniswapWeth(
+					bestCrossedMarket.volume,
+					minerReward,
+					targets,
+					payloads,
+					{
+						gasPrice: BigNumber.from(100000000000),
+						gasLimit: BigNumber.from(1000000),
+						nonce,
+					}
+				);
 
 				const signedTransaction = await wallet.signTransaction(testTransaction);
 
-				const tx = await testProvider.sendTransaction(signedTransaction);
+				tx = await testProvider.sendTransaction(signedTransaction);
 
-				nonce++;
+				txReceipt = await tx.wait(1);
 
-				console.log(tx);
-
-				const receipt = await tx.wait(1);
-
-				console.log("Transaction receipt", receipt);
-
-				// const testGas = await testContract.provider.estimateGas({
-				// 	...testTransaction,
-				// 	from: wallet.address,
-				// });
-
-				// console.log("testGas", testGas.toString());
+				console.log("Transaction receipt", txReceipt);
 			} catch (e) {
 				console.log(e);
 			}
