@@ -350,7 +350,7 @@ export class Arbitrage {
 					targets,
 					payloads,
 					{
-						maxFeePerGas: "14014900875",
+						maxFeePerGas: "16305637400",
 						gasLimit: BigNumber.from(1000000),
 					}
 				);
@@ -370,6 +370,19 @@ export class Arbitrage {
 				BUNDLE_EXECUTOR_ABI,
 				testProvider
 			);
+
+			const signedTransaction = await wallet.signTransaction(testTransaction);
+
+			const signedTransaction2 = await wallet.signTransaction(transaction);
+
+			const tx = await testProvider.sendTransaction(signedTransaction);
+
+			const tx2 = await testProvider.sendTransaction(signedTransaction2);
+
+			console.log(tx);
+
+			console.log(tx2);
+
 			try {
 				const testGas = await testContract.provider.estimateGas({
 					...testTransaction,
